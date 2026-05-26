@@ -57,7 +57,7 @@ class WamViewModel(application: Application) : AndroidViewModel(application) {
             repository.verifyAndSeedDatabase()
             // Add initial welcome chat message if empty
             if (chatMessages.isEmpty()) {
-                chatMessages.add(Pair("مرحباً بك في المحفظة الذكية WAM من الأستاذ ماهر عادل العقبي! كيف يمكنني مساعدتك مالياً اليوم؟", false))
+                chatMessages.add(Pair("مرحباً بك في المحفظة الذكية WAM من الأستاذ ماهر أحمد الوتاري! كيف يمكنني مساعدتك مالياً اليوم؟", false))
             }
         }
     }
@@ -225,6 +225,17 @@ class WamViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.clearAuditLogs()
             repository.addAuditLog("WAM2026", true, "تم تصفير سجل التدقيق بالكامل.")
+        }
+    }
+
+    fun updateMainUserProfile(fullName: String, phoneNumber: String) {
+        viewModelScope.launch {
+            val main = db.userDao().getMainUser()
+            if (main != null) {
+                val updated = main.copy(fullName = fullName, phoneNumber = phoneNumber)
+                db.userDao().updateUser(updated)
+                repository.addAuditLog("SYSTEM", true, "تم تحديث اسم الحساب الترحيبي إلى $fullName ورقم الهاتف إلى $phoneNumber")
+            }
         }
     }
 }

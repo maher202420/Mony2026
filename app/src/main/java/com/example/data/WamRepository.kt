@@ -24,7 +24,7 @@ class WamRepository(private val db: AppDatabase) {
         if (existingMain == null) {
             // Main user (the app owner / active wallet)
             val mainUser = UserAccount(
-                fullName = "الأستاذ ماهر عادل العقبي",
+                fullName = "ماهر أحمد الوتاري",
                 phoneNumber = "777644670",
                 balanceYer = 285400.0,
                 balanceUsd = 450.0,
@@ -35,7 +35,7 @@ class WamRepository(private val db: AppDatabase) {
 
             // Dynamic agent accounts/others for interactive transfers
             val user2 = UserAccount(
-                fullName = "شركة الصيفي للصرافة (عميل)",
+                fullName = "شركة النخبة للخدمات المصرفية (عميل)",
                 phoneNumber = "771234567",
                 balanceYer = 1200000.0,
                 balanceUsd = 2000.0,
@@ -75,7 +75,7 @@ class WamRepository(private val db: AppDatabase) {
                 type = "DEPOSIT",
                 amount = 300000.0,
                 currency = "YER",
-                title = "إيداع نقدي عبر وكيل الصيفي للاستثمار",
+                title = "إيداع نقدي عبر الشبكة المصرفية المعتمدة لـ WAM",
                 reference = "TX-${UUID.randomUUID().toString().take(8).uppercase()}"
             ))
             transactionDao.insertTransaction(Transaction(

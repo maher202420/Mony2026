@@ -55,12 +55,22 @@ class MainActivity : ComponentActivity() {
 
                 var currentScreen by remember { mutableStateOf(Screen.HOME) }
                 var showAdminDashboardOverlay by remember { mutableStateOf(false) }
+                var isOnboarded by remember { mutableStateOf(false) }
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = Color(0xFF0A0E17)
                 ) {
-                    if (showAdminDashboardOverlay) {
+                    if (!isOnboarded) {
+                        OnboardingScreen(
+                            primaryColor = primaryColor,
+                            secondaryColor = secondaryColor,
+                            onOnboardingComplete = { fullName, phone ->
+                                viewModel.updateMainUserProfile(fullName, phone)
+                                isOnboarded = true
+                            }
+                        )
+                    } else if (showAdminDashboardOverlay) {
                         AdminScreen(
                             viewModel = viewModel,
                             onNavigateBack = { showAdminDashboardOverlay = false },
@@ -183,7 +193,7 @@ fun CustomM3NavigationBar(
             selected = currentScreen == Screen.CHATBOT,
             onClick = { onScreenSelected(Screen.CHATBOT) },
             icon = { Icon(Icons.Default.SmartToy, contentDescription = "المساعد الذكي") },
-            label = { Text("الذكي WAM AI", fontSize = 9.sp, fontWeight = FontWeight.Bold) },
+            label = { Text("المستشار الذكي WAM AI", fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1) },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = Color.Black,
                 selectedTextColor = primaryColor,

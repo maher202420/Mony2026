@@ -115,9 +115,9 @@ fun HomeScreen(
             if (isFrozen) {
                 item {
                     val message = if (adminConfig?.isSystemFrozen == true) {
-                        "يتعرض النظام حالياً لصيانة طارئة أو تجميد أمان من مالك التطبيق الأستاذ ماهر عادل العقبي. يرجى مراجعة الدعم الفني."
+                        "يتعرض النظام حالياً لصيانة طارئة أو تجميد أمان من مالك التطبيق الأستاذ ماهر أحمد الوتاري. يرجى مراجعة الدعم الفني."
                     } else {
-                        "تنبيه أمني: تم تجميد حسابك مؤقتاً لمخالفين شروط الاستخدام. يرجى التواصل مع الدعم الفني فندق المالك WAM."
+                        "تنبيه أمني: تم تجميد حسابك مؤقتاً لمخالفين شروط الاستخدام. يرجى التواصل مع الدعم الفني لمالك التطبيق WAM."
                     }
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0x33FF3B30)),
@@ -212,7 +212,7 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "المجموعة: شركة الصيفي للصرافة والمستثمرين WAM",
+                                text = "الشبكة المعتمدة: بروتوكول WAM المالي الآمن وتحت إشراف المالك",
                                 color = Color(0xFF9E9E9E),
                                 fontSize = 10.sp
                             )
@@ -299,7 +299,7 @@ fun HomeScreen(
 
                     OperationButton(
                         title = "سحب وإيداع (الوكلاء)",
-                        sub = "الصيفي للصرافة والخدمات",
+                        sub = "وكلاء ومصارف WAM المعتمدين",
                         icon = Icons.Default.LocationOn,
                         color = primaryColor,
                         modifier = Modifier.weight(1f),

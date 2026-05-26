@@ -227,7 +227,7 @@ fun AboutScreen(
                                 ) {
                                     Icon(Icons.Default.Verified, contentDescription = "تسجيل دخول مشرف", tint = Color(0xFF00E676))
                                     Text(
-                                        text = "مرحباً بك، المشرف العام للأستاذ ماهر عادل العقبي",
+                                        text = "مرحباً بك، المشرف العام للأستاذ ماهر أحمد الوتاري",
                                         color = Color.White,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
@@ -358,7 +358,7 @@ fun AboutScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "جميع الحقوق محفوظة لصالح الأستاذ ماهر عادل العقبي © 2026.\nصمم التطبيق ليعمل في بيئة مشفرة ومصنفة دولياً تضمن الأمان المالي المطلق وخوارزميات المعاملات المقاضية السريعة.",
+                            text = "جميع الحقوق محفوظة لصالح الأستاذ ماهر أحمد الوتاري © 2026.\nصمم التطبيق ليعمل في بيئة مشفرة ومصنفة دولياً تضمن الأمان المالي المطلق وخوارزميات المعاملات المقاضية السريعة.",
                             color = Color.LightGray,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Light
