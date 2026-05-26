@@ -1,0 +1,6 @@
+{
+  "name": "Al-Maher Money",
+  "description": "تطبيق محفظة الماهر موني الإلكترونية من الجيل القادم - WAM",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
