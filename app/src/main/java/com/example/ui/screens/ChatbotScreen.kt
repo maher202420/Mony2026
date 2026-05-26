@@ -1,15 +1,16 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.*
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -18,261 +19,291 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.WamViewModel
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatbotScreen(
-    viewModel: WamViewModel,
-    modifier: Modifier = Modifier,
-    primaryColor: Color,
-    secondaryColor: Color
+    viewModel: WamViewModel
 ) {
-    val messages = viewModel.chatMessages
-    val isLoading = viewModel.isChatLoading
-    var userInput by remember { mutableStateOf("") }
-    val listState = rememberLazyListState()
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val chatMessages = viewModel.chatMessages
+    val isChatLoading by viewModel.isChatLoading.collectAsState()
+    val listState = rememberLazyListState()
 
-    // Scroll to bottom when new messages arrive
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
+    var userPrompt by remember { mutableStateOf("") }
+    
+    // API KEY RESOLUTION: first look in BuildConfig, otherwise fall back to manual custom key
+    var customApiKey by remember { 
+        mutableStateOf(
+            try { 
+                val key = com.example.BuildConfig.GEMINI_API_KEY
+                if (key == "UNSPECIFIED" || key.isEmpty()) "" else key
+            } catch (e: Exception) { 
+                "" 
+            }
+        ) 
     }
 
-    val presetPrompts = listOf(
-        "كيف أحصل على قرض فوري؟",
-        "ما هي رسوم التحويل في WAM؟",
-        "معلومات عن الأستاذ ماهر أحمد الوتاري",
-        "هل سداد الفواتير آمن وبأمان؟"
-    )
+    var showApiKeyConfig by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xFF0A0E17))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Header with clear conversation button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "بوابة الذكاء الاصطناعي المدمج",
-                        color = Color.Gray,
-                        fontSize = 12.sp
-                    )
-                    Text(
-                        text = "المساعد الذكي WAM AI",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+    val primaryColor = Color(0xFFFFD700) // Gold
+    val secondaryColor = Color(0xFF00D4FF) // Electric Blue
+    val darkBgColor = Color(0xFF0A0E17)
+    val cardColor = Color(0xFF131722)
 
-                IconButton(
-                    onClick = { viewModel.clearChat() },
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(Color.DarkGray)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "تفريع المحادثة",
-                        tint = Color.White
-                    )
-                }
-            }
-
-            // Message list
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(messages) { msg ->
-                    ChatBubble(msg = msg, primaryColor = primaryColor, secondaryColor = secondaryColor)
-                }
-
-                if (isLoading) {
-                    item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF1E1E2E))
-                                .padding(12.dp)
-                                .align(Alignment.Start)
-                        ) {
-                            CircularProgressIndicator(
-                                color = primaryColor,
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Text(
-                                text = "WAM AI يفكر ويكتب استجابته المشفرة...",
-                                color = Color.Gray,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Presets row when keyboard is closed
-            if (userInput.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("أسئلة شائعة مقترحة:", color = Color.Gray, fontSize = 11.sp)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        presetPrompts.take(2).forEach { p ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF1E1E2E))
-                                    .border(0.5.dp, Color(0xFF2E2E3E), RoundedCornerShape(8.dp))
-                                    .clickable { viewModel.sendChatMessage(p) }
-                                    .padding(8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(p, color = Color.White, fontSize = 10.sp, textAlign = TextAlign.Center)
-                            }
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        presetPrompts.takeLast(2).forEach { p ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF1E1E2E))
-                                    .border(0.5.dp, Color(0xFF2E2E3E), RoundedCornerShape(8.dp))
-                                    .clickable { viewModel.sendChatMessage(p) }
-                                    .padding(8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(p, color = Color.White, fontSize = 10.sp, textAlign = TextAlign.Center)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Text Entry Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = userInput,
-                    onValueChange = { userInput = it },
-                    placeholder = { Text("اطرح استفساراً من WAM AI...", color = Color.Gray) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = primaryColor,
-                        unfocusedBorderColor = Color.DarkGray,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp)
-                )
-
-                IconButton(
-                    onClick = {
-                        if (userInput.isNotBlank()) {
-                            viewModel.sendChatMessage(userInput.trim())
-                            userInput = ""
-                        }
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(primaryColor)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "إرسال",
-                        tint = Color.Black
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(80.dp))
+    // Scroll chat to end when new messages arrive
+    LaunchedEffect(chatMessages.size) {
+        if (chatMessages.isNotEmpty()) {
+            listState.animateScrollToItem(chatMessages.size - 1)
         }
-    }
-}
-
-@Composable
-fun ChatBubble(msg: Pair<String, Boolean>, primaryColor: Color, secondaryColor: Color) {
-    val isUser = msg.second
-    val bubbleColor = if (isUser) primaryColor else Color(0xFF1E1E2E)
-    val textColor = if (isUser) Color.Black else Color.White
-    val align = if (isUser) Alignment.End else Alignment.Start
-    val shape = if (isUser) {
-        RoundedCornerShape(16.dp, 16.dp, 0.dp, 16.dp)
-    } else {
-        RoundedCornerShape(16.dp, 16.dp, 16.dp, 0.dp)
     }
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = align
+            .fillMaxSize()
+            .background(darkBgColor)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Chat Header View
         Card(
-            shape = shape,
-            colors = CardDefaults.cardColors(containerColor = bubbleColor),
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .border(
-                    width = 0.5.dp,
-                    color = if (isUser) Color.Transparent else Color(0xFF2E2E3E),
-                    shape = shape
-                )
+            colors = CardDefaults.cardColors(containerColor = cardColor),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = msg.first,
-                color = textColor,
-                fontSize = 12.sp,
+            Row(
                 modifier = Modifier.padding(12.dp),
-                textAlign = if(isUser) TextAlign.End else TextAlign.Start
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(primaryColor.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = Icons.Default.SmartToy, contentDescription = null, tint = primaryColor)
+                    }
+                    Column {
+                        Text(
+                            text = "المساعد المالي الذكي WAM AI",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "بوابة الذكاء الاصطناعي للمحفظة",
+                            color = Color.LightGray,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
+
+                // Key setup button
+                IconButton(
+                    onClick = { showApiKeyConfig = !showApiKeyConfig },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VpnKey,
+                        contentDescription = "Configure API Key",
+                        tint = if (customApiKey.isNotBlank()) primaryColor else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        // Expanded Api Key Config Card
+        AnimatedVisibility(visible = showApiKeyConfig) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "إعداد مفتاح Gemini API الخاص بك:",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "يتم تحميل مفتاحك تلقائياً من لوحة Secrets في AI Studio. وإذا كنت ترغب في تجاوز أو استخدام مفتاح مخصص آخر، يرجى كتابته هنا:",
+                        color = Color.LightGray,
+                        fontSize = 9.sp,
+                        lineHeight = 13.sp
+                    )
+
+                    OutlinedTextField(
+                        value = customApiKey,
+                        onValueChange = { customApiKey = it },
+                        placeholder = { Text("أدخل AIzaSy...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryColor,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                        )
+                    )
+
+                    TextButton(
+                        onClick = {
+                            showApiKeyConfig = false
+                            Toast.makeText(context, "تم حفظ مفتاح الترخيص محلياً في الجلسة النشطة!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("تم، حفظ المفتاح", color = primaryColor, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        // Messages Bubble Board
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White.copy(alpha = 0.015f))
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(chatMessages) { messagePair ->
+                val (text, isUser) = messagePair
+                val bubbleColor = if (isUser) secondaryColor.copy(alpha = 0.15f) else cardColor
+                val textColor = if (isUser) secondaryColor else Color.White
+                val alignment = if (isUser) Alignment.End else Alignment.Start
+                val shape = if (isUser) {
+                    RoundedCornerShape(16.dp, 16.dp, 2.dp, 16.dp)
+                } else {
+                    RoundedCornerShape(16.dp, 16.dp, 16.dp, 2.dp)
+                }
+
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = bubbleColor),
+                        shape = shape,
+                        modifier = Modifier
+                            .widthIn(max = 280.dp)
+                            .border(1.dp, Color.White.copy(alpha = 0.02f), shape)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = if (isUser) "أنت" else "المستشار الذكي WAM AI",
+                                color = if (isUser) secondaryColor else primaryColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = text,
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                                textAlign = TextAlign.Right
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Typing indication spinner
+            if (isChatLoading) {
+                item {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = primaryColor,
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = "جاري التفكير المالي الآمن لـ WAM...",
+                            color = Color.LightGray,
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Direct Text inputs row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = userPrompt,
+                onValueChange = { userPrompt = it },
+                placeholder = { Text("اسأل WAM AI عن التمويل، الادخار، أو دفع الفواتير...") },
+                singleLine = true,
+                maxLines = 1,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = {
+                    if (userPrompt.isNotBlank()) {
+                        viewModel.askGemini(userPrompt, customApiKey)
+                        userPrompt = ""
+                    }
+                }),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("chat_input_text")
+                    .clip(RoundedCornerShape(12.dp)),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = primaryColor,
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                )
             )
+
+            FloatingActionButton(
+                onClick = {
+                    if (userPrompt.isNotBlank()) {
+                        viewModel.askGemini(userPrompt, customApiKey)
+                        userPrompt = ""
+                    }
+                },
+                containerColor = primaryColor,
+                contentColor = Color.Black,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("chat_send_fab_button")
+            ) {
+                Icon(imageVector = Icons.Default.Send, contentDescription = "Send", modifier = Modifier.size(20.dp))
+            }
         }
     }
 }

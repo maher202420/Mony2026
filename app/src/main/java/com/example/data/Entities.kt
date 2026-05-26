@@ -2,56 +2,53 @@ package com.example.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
-@Entity(tableName = "user_accounts")
+@Entity(tableName = "users")
+@Serializable
 data class UserAccount(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val fullName: String,
-    val phoneNumber: String,
-    val balanceYer: Double,
-    val balanceUsd: Double,
-    val status: String, // "ACTIVE" or "FROZEN"
-    val isMainUser: Boolean = false
+    val phoneNumber: String, // Must be unique
+    val password: String,
+    val balanceYer: Double = 285400.0,
+    val balanceUsd: Double = 450.0,
+    val isFrozen: Boolean = false
 )
 
 @Entity(tableName = "transactions")
+@Serializable
 data class Transaction(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val type: String, // "P2P", "BILL", "RECHARGE", "CASH_OUT", "LOAN", "SAVING"
+    val type: String, // "PAYMENT", "TRANSFER", "DEPOSIT", "WITHDRAWAL"
     val amount: Double,
-    val currency: String, // "YER" or "USD"
+    val currency: String, // "YER", "USD"
     val title: String,
-    val timestamp: Long = System.currentTimeMillis(),
-    val reference: String = ""
+    val reference: String,
+    val isSuccess: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "saving_pots")
-data class SavingPot(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val title: String,
-    val targetAmount: Double,
-    val currentAmount: Double,
-    val currency: String
-)
-
-@Entity(tableName = "audit_logs")
-data class AuditLog(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val timestamp: Long = System.currentTimeMillis(),
-    val username: String,
-    val isSuccess: Boolean,
-    val ipAddress: String = "192.168.1.1",
-    val description: String
-)
-
-@Entity(tableName = "admin_configs")
+@Entity(tableName = "admin_config")
+@Serializable
 data class AdminConfig(
     @PrimaryKey val id: Int = 1,
     val appName: String = "الماهر موني",
-    val primaryColorHex: String = "#FFD700", // WAM Gold
-    val secondaryColorHex: String = "#00D4FF", // WAM Electric
-    val p2pFeePercentage: Double = 0.5,
+    val primaryColor: String = "#FFD700", // Gold
+    val secondaryColor: String = "#00D4FF", // Electric Blue
+    val p2pFeePercent: Double = 1.0,
     val isCryptoEnabled: Boolean = true,
     val isSystemFrozen: Boolean = false,
-    val serviceLimitYer: Double = 500000.0
+    val partnerCompanies: String = "شركة النخبة المصرفية, شبكة الأمان المالية", // WAM approved network partners
+    val customWelcomeMessage: String = "مرحباً بك في جيل المال الذكي والآمن"
+)
+
+@Entity(tableName = "audit_logs")
+@Serializable
+data class AuditLog(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val user: String,
+    val isSuccess: Boolean,
+    val action: String,
+    val timestamp: Long = System.currentTimeMillis()
 )

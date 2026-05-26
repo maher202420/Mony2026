@@ -1,19 +1,20 @@
 package com.example.data
 
 import android.content.Context
-import androidx.room.*
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
 
 @Database(
-    entities = [UserAccount::class, Transaction::class, SavingPot::class, AuditLog::class, AdminConfig::class],
+    entities = [UserAccount::class, Transaction::class, AdminConfig::class, AuditLog::class],
     version = 1,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-    abstract fun userDao(): UserAccountDao
+    abstract fun userDao(): UserDao
     abstract fun transactionDao(): TransactionDao
-    abstract fun savingPotDao(): SavingPotDao
-    abstract fun auditLogDao(): AuditLogDao
     abstract fun adminConfigDao(): AdminConfigDao
+    abstract fun auditLogDao(): AuditLogDao
 
     companion object {
         @Volatile
@@ -24,7 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "wam_wallet_db"
+                    "wam_database"
                 )
                 .fallbackToDestructiveMigration()
                 .build()

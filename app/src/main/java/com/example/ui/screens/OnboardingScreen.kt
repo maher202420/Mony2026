@@ -1,12 +1,12 @@
 package com.example.ui.screens
 
 import android.widget.Toast
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -28,615 +28,337 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import com.example.ui.WamViewModel
+import kotlinx.coroutines.launch
 
-enum class OnboardingStep {
-    SIGN_UP,
-    KYC,
-    LOGIN
-}
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
-    primaryColor: Color,
-    secondaryColor: Color,
-    onOnboardingComplete: (fullName: String, phone: String) -> Unit
+    viewModel: WamViewModel,
+    onOnboardingComplete: () -> Unit,
+    onNavigateToAdmin: () -> Unit
 ) {
     val context = LocalContext.current
-    var currentStep by remember { mutableStateOf(OnboardingStep.SIGN_UP) }
+    val coroutineScope = rememberCoroutineScope()
 
-    // User data saved during Sign Up
-    var registeredName by remember { mutableStateOf("") }
-    var registeredPhone by remember { mutableStateOf("") }
-    var registeredPassword by remember { mutableStateOf("") }
+    var isLoginMode by remember { mutableStateOf(true) } // Mode switcher: login vs signup
+    
+    // Form States
+    var fullName by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var isOperating by remember { mutableStateOf(false) }
+
+    // Secret elements
+    var secretHeaderClickCount by remember { mutableStateOf(0) }
+    var showAdminCredentialsDialog by remember { mutableStateOf(false) }
+
+    // Colors
+    val primaryColor = Color(0xFFFFD700) // Gold
+    val secondaryColor = Color(0xFF00D4FF) // Electric Blue
+    val darkBgColor = Color(0xFF0A0E17)
+    val cardColor = Color(0xFF131722)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0E17))
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
+            .background(darkBgColor)
     ) {
-        Crossfade(targetState = currentStep, label = "OnboardingTransition") { step ->
-            when (step) {
-                OnboardingStep.SIGN_UP -> {
-                    SignUpSection(
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor,
-                        onSignUpSuccess = { name, phone, pass ->
-                            registeredName = name
-                            registeredPhone = phone
-                            registeredPassword = pass
-                            currentStep = OnboardingStep.KYC
-                        },
-                        onNavigateToLogin = {
-                            currentStep = OnboardingStep.LOGIN
-                        }
-                    )
-                }
-                OnboardingStep.KYC -> {
-                    KycSection(
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor,
-                        fullName = registeredName,
-                        onKycComplete = {
-                            currentStep = OnboardingStep.LOGIN
-                        }
-                    )
-                }
-                OnboardingStep.LOGIN -> {
-                    LoginSection(
-                        primaryColor = primaryColor,
-                        secondaryColor = secondaryColor,
-                        registeredPhone = registeredPhone,
-                        registeredPassword = registeredPassword,
-                        onLoginSuccess = { phone ->
-                            // Use registered name or fallback to owner's name if it matches the registered state
-                            val nameToUse = if (phone == registeredPhone && registeredName.isNotBlank()) registeredName else "ماهر أحمد الوتاري"
-                            onOnboardingComplete(nameToUse, phone)
-                        },
-                        onNavigateToSignUp = {
-                            currentStep = OnboardingStep.SIGN_UP
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SignUpSection(
-    primaryColor: Color,
-    secondaryColor: Color,
-    onSignUpSuccess: (String, String, String) -> Unit,
-    onNavigateToLogin: () -> Unit
-) {
-    val context = LocalContext.current
-    var name by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-
-    var passwordVisible by remember { mutableStateOf(false) }
-    var confirmPasswordVisible by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // App Identity Header
-        Box(
+        Column(
             modifier = Modifier
-                .size(70.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.radialGradient(listOf(secondaryColor, primaryColor))),
-            contentAlignment = Alignment.Center
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Text(
-                text = "WAM",
-                color = Color.Black,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+            Spacer(modifier = Modifier.height(20.dp))
 
-        Text(
-            text = "إنشاء حساب جديد كلياً",
-            color = Color.White,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.testTag("signup_title")
-        )
-
-        Text(
-            text = "مرحباً بك في عالم المال الذكي المتطور",
-            color = Color(0xFFE0E0E0),
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Input Name
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("الاسم الكامل ثلاثياً", color = Color.Gray) },
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = primaryColor) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = primaryColor,
-                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
-            ),
-            modifier = Modifier.fillMaxWidth().testTag("signup_name_input")
-        )
-
-        // Input Phone
-        OutlinedTextField(
-            value = phone,
-            onValueChange = { phone = it },
-            label = { Text("رقم الهاتف (مثل: 777644670)", color = Color.Gray) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = primaryColor) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = primaryColor,
-                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
-            ),
-            modifier = Modifier.fillMaxWidth().testTag("signup_phone_input")
-        )
-
-        // Input Password
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("إنشاء كلمة المرور", color = Color.Gray) },
-            singleLine = true,
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = primaryColor) },
-            trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = null,
-                        tint = Color.Gray
-                    )
-                }
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = primaryColor,
-                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
-            ),
-            modifier = Modifier.fillMaxWidth().testTag("signup_password_input")
-        )
-
-        // Confirm Password
-        OutlinedTextField(
-            value = confirmPassword,
-            onValueChange = { confirmPassword = it },
-            label = { Text("تأكيد كلمة المرور", color = Color.Gray) },
-            singleLine = true,
-            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            leadingIcon = { Icon(Icons.Default.LockReset, contentDescription = null, tint = primaryColor) },
-            trailingIcon = {
-                IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
-                    Icon(
-                        imageVector = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = null,
-                        tint = Color.Gray
-                    )
-                }
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = primaryColor,
-                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
-            ),
-            modifier = Modifier.fillMaxWidth().testTag("signup_confirm_password_input")
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Create Account button
-        Button(
-            onClick = {
-                if (name.isBlank() || phone.isBlank() || password.isBlank() || confirmPassword.isBlank()) {
-                    Toast.makeText(context, "الرجاء تعبئة كافة الحقول بدقة", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-                if (password != confirmPassword) {
-                    Toast.makeText(context, "تنبيه: كلمتا المرور غير متطابقتين!", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-                onSignUpSuccess(name, phone, password)
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .testTag("signup_submit_button")
-        ) {
-            Text(
-                text = "إنشاء حساب WAM",
-                color = Color.Black,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        // Link to login screen
-        Row(
-            modifier = Modifier.padding(top = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "لديك حساب بالفعل؟ ", color = Color.Gray, fontSize = 13.sp)
-            Text(
-                text = "تسجيل الدخول",
-                color = secondaryColor,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clickable { onNavigateToLogin() }
-                    .padding(4.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun KycSection(
-    primaryColor: Color,
-    secondaryColor: Color,
-    fullName: String,
-    onKycComplete: () -> Unit
-) {
-    val context = LocalContext.current
-    var idUploaded by remember { mutableStateOf(false) }
-    var selfieUploaded by remember { mutableStateOf(false) }
-    var isVerifying by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        Text(
-            text = "التحقق من الهوية (KYC مبسط)",
-            color = Color.White,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-
-        Text(
-            text = "يرجى رفع الوثائق المطلوبة لاعتماد حسابك وتفعيله الفوري",
-            color = Color(0xFFE0E0E0),
-            fontSize = 13.sp,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Upload National ID
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF131722)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = if (idUploaded) Color(0xFF00E676) else Color.Gray.copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .clickable { idUploaded = true },
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (idUploaded) Color(0x2200E676) else Color(0x11FFFFFF)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (idUploaded) Icons.Default.CheckCircle else Icons.Default.Badge,
-                        contentDescription = null,
-                        tint = if (idUploaded) Color(0xFF00E676) else primaryColor
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "رفع صورة الهوية الشخصية",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (idUploaded) "تم اختيار بطاقة الهوية الذكية ✓" else "يرجى النقر لالتقاط/رفع جواز أو بطاقة شخصية",
-                        color = if (idUploaded) Color(0xFF00E676) else Color.Gray,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
-
-        // Upload Selfie
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF131722)),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = if (selfieUploaded) Color(0xFF00E676) else Color.Gray.copy(alpha = 0.3f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                .clickable { selfieUploaded = true },
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (selfieUploaded) Color(0x2200E676) else Color(0x11FFFFFF)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (selfieUploaded) Icons.Default.CheckCircle else Icons.Default.PhotoCamera,
-                        contentDescription = null,
-                        tint = if (selfieUploaded) Color(0xFF00E676) else primaryColor
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "رفع صورة شخصية (Selfie)",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = if (selfieUploaded) "تم التقاط سيلفي الوضوح العالي ✓" else "يرجى التقاط صورة سيلفي مباشرة لمطابقتها",
-                        color = if (selfieUploaded) Color(0xFF00E676) else Color.Gray,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (isVerifying) {
+            // Brand Secret Entrance Header (Taps 5 times on WAM or logo triggers Admin Dialog)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CircularProgressIndicator(color = secondaryColor)
-                Text(
-                    text = "جاري التحقق من بياناتك...",
-                    color = secondaryColor,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            LaunchedEffect(Unit) {
-                delay(2200)
-                onKycComplete()
-            }
-        } else {
-            Button(
-                onClick = {
-                    if (!idUploaded || !selfieUploaded) {
-                        Toast.makeText(context, "الرجاء رفع صورة الهوية الشخصية وصورتك الشخصية للاستمرار", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                    isVerifying = true
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("kyc_submit_button")
-            ) {
-                Text(
-                    text = "إرسال للتحقق المالي",
-                    color = Color.Black,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LoginSection(
-    primaryColor: Color,
-    secondaryColor: Color,
-    registeredPhone: String,
-    registeredPassword: String,
-    onLoginSuccess: (phone: String) -> Unit,
-    onNavigateToSignUp: () -> Unit
-) {
-    val context = LocalContext.current
-    var usernameOrPhone by remember { mutableStateOf(registeredPhone) }
-    var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Brand Symbol
-        Box(
-            modifier = Modifier
-                .size(70.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.radialGradient(listOf(secondaryColor, primaryColor))),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "WAM",
-                color = Color.Black,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Text(
-            text = "تسجيل الدخول إلى المحفظة",
-            color = Color.White,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.testTag("login_title")
-        )
-
-        Text(
-            text = "أهلاً بك مجدداً في جيل المال المشفر والأمن المطلق",
-            color = Color(0xFFE0E0E0),
-            fontSize = 13.sp,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Phone/Email input
-        OutlinedTextField(
-            value = usernameOrPhone,
-            onValueChange = { usernameOrPhone = it },
-            label = { Text("رقم الهاتف أو البريد الإلكتروني", color = Color.Gray) },
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = primaryColor) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = primaryColor,
-                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
-            ),
-            modifier = Modifier.fillMaxWidth().testTag("login_username_input")
-        )
-
-        // Password input
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("كلمة المرور", color = Color.Gray) },
-            singleLine = true,
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = primaryColor) },
-            trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                        contentDescription = null,
-                        tint = Color.Gray
-                    )
-                }
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = primaryColor,
-                unfocusedBorderColor = Color.Gray.copy(alpha = 0.5f)
-            ),
-            modifier = Modifier.fillMaxWidth().testTag("login_password_input")
-        )
-
-        // "Forgot Password" link
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start
-        ) {
-            Text(
-                text = "نسيت كلمة المرور؟",
-                color = primaryColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .clickable {
-                        Toast.makeText(context, "الرجاء التواصل مع الدعم الفني 777644670 لاستعادة كلمة المرور", Toast.LENGTH_LONG).show()
+                        secretHeaderClickCount++
+                        if (secretHeaderClickCount >= 5) {
+                            secretHeaderClickCount = 0
+                            showAdminCredentialsDialog = true
+                        } else if (secretHeaderClickCount > 1) {
+                            Toast.makeText(context, "باقي ${5 - secretHeaderClickCount} نقرات للولوج السري للإدارة!", Toast.LENGTH_SHORT).show()
+                        }
                     }
-                    .padding(4.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Submit Login button
-        Button(
-            onClick = {
-                if (usernameOrPhone.isBlank() || password.isBlank()) {
-                    Toast.makeText(context, "الرجاء كمال حقول تسجيل الدخول", Toast.LENGTH_SHORT).show()
-                    return@Button
+                    .padding(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Brush.radialGradient(listOf(secondaryColor, primaryColor))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "WAM",
+                        color = Color.Black,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black
+                    )
                 }
-                // Permit local login bypassing with default test credentials as well
-                if (registeredPhone.isNotBlank() && usernameOrPhone == registeredPhone) {
-                    if (password != registeredPassword) {
-                        Toast.makeText(context, "تنبيه: كلمة المرور خاطئة!", Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                }
-                onLoginSuccess(usernameOrPhone)
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .testTag("login_submit_button")
-        ) {
-            Text(
-                text = "دخول إلى المحفظة",
-                color = Color.Black,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
 
-        // SignUp navigation link
-        Row(
-            modifier = Modifier.padding(top = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "ليس لديك حساب؟ ", color = Color.Gray, fontSize = 13.sp)
-            Text(
-                text = "إنشاء حساب جديد",
-                color = secondaryColor,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
+                Text(
+                    text = "الماهر موني • عالم المال الذكي والآمن", // Corrected spelling T4
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = "بروتوكول تحويل متطور تحت إشراف الأستاذ ماهر أحمد الوتاري", // Corrected T6
+                    color = Color.Gray,
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Main Credential Authorization Board
+            Card(
+                colors = CardDefaults.cardColors(containerColor = cardColor),
+                shape = RoundedCornerShape(24.dp),
                 modifier = Modifier
-                    .clickable { onNavigateToSignUp() }
-                    .padding(4.dp)
+                    .fillMaxWidth()
+                    .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(24.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = if (isLoginMode) "تسجيل الدخول للمحفظة الاستثمارية" else "إنشاء حساب جديد في WAM",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Right,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Text fields depends on Mode
+                    if (!isLoginMode) {
+                        OutlinedTextField(
+                            value = fullName,
+                            onValueChange = { fullName = it },
+                            label = { Text("الاسم الكامل ثلاثي") },
+                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = primaryColor) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("onboarding_fullname"),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryColor,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                            )
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = phoneNumber,
+                        onValueChange = { phoneNumber = it },
+                        label = { Text("رقم الهاتف الفعال (من 9 أرقام)") },
+                        leadingIcon = { Icon(Icons.Default.PhoneAndroid, contentDescription = null, tint = secondaryColor) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth().testTag("onboarding_phone"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = secondaryColor,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("كلمة المرور المشفرة") },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = primaryColor) },
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                    contentDescription = null,
+                                    tint = Color.Gray
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth().testTag("onboarding_password"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryColor,
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Action buttons
+                    Button(
+                        onClick = {
+                            if (phoneNumber.length < 9) {
+                                Toast.makeText(context, "الرجاء إدخال رقم هاتف صحيح يتكون من 9 أرقام على الأقل.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (password.isEmpty()) {
+                                Toast.makeText(context, "الرجاء تعيين كلمة المرور للاستمرار", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+
+                            isOperating = true
+                            coroutineScope.launch {
+                                if (isLoginMode) {
+                                    // REQ 2: Log in verified strictly against local Room DB config
+                                    val err = viewModel.loginUser(phoneNumber, password)
+                                    isOperating = false
+                                    if (err != null) {
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "أهلاً بك مجدداً في الجيل المالي الآمن!", Toast.LENGTH_SHORT).show()
+                                        onOnboardingComplete()
+                                    }
+                                } else {
+                                    if (fullName.isBlank()) {
+                                        Toast.makeText(context, "يرجى كتابة اسمك الثلاثي لإنشاء الحساب", Toast.LENGTH_SHORT).show()
+                                        isOperating = false
+                                        return@launch
+                                    }
+                                    
+                                    // REQ 2: Register verified with phone uniqueness and 8-char password length
+                                    val err = viewModel.registerNewUser(fullName, phoneNumber, password)
+                                    isOperating = false
+                                    if (err != null) {
+                                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "تم تسجيل حسابك بنجاح! الرجاء تسجيل الدخول الآن.", Toast.LENGTH_LONG).show()
+                                        isLoginMode = true
+                                    }
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("onboarding_action_btn"),
+                        enabled = !isOperating
+                    ) {
+                        Text(
+                            text = if (isOperating) "جاري التحقق والتشفير المالي..." else if (isLoginMode) "دخول آمن للمحفظة" else "إنشاء وتسجيل الحساب",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
+
+                    // Mode switch toggle link
+                    TextButton(
+                        onClick = { isLoginMode = !isLoginMode },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (isLoginMode) "ليس لديك حساب؟ سجل حساباً جديداً بنقرة واحدة" else "لديك حساب بالفعل؟ قم بتسجيل الدخول الفوري هنا",
+                            color = secondaryColor,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+
+        // --- HIDDEN ADMIN GATEWAY POPUP (T1) ---
+        if (showAdminCredentialsDialog) {
+            var adminUser by remember { mutableStateOf("") }
+            var adminPass by remember { mutableStateOf("") }
+            var isVerifyingAdmin by remember { mutableStateOf(false) }
+
+            AlertDialog(
+                onDismissRequest = { showAdminCredentialsDialog = false },
+                title = {
+                    Text(
+                        text = "بوابة الإشراف العليا المشفرة",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Right,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "للدخول إلى لوحة المالك، يرجى تقديم اسم المستخدم الإداري ورمز الأمان ولقطات المرور الخاصة بـ WAM:",
+                            color = Color.LightGray,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Right,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = adminUser,
+                            onValueChange = { adminUser = it },
+                            label = { Text("اسم مستخدم لوحة التحكم") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("admin_username_input"),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryColor,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                            )
+                        )
+
+                        OutlinedTextField(
+                            value = adminPass,
+                            onValueChange = { adminPass = it },
+                            label = { Text("كلمة مرور المشرف") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth().testTag("admin_password_input"),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = primaryColor,
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.1f)
+                            )
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            isVerifyingAdmin = true
+                            // Correct Credential Matching as per T1:
+                            // User: WAM2026
+                            // Pass: maher--736462
+                            if (adminUser == "WAM2026" && adminPass == "maher--736462") {
+                                isVerifyingAdmin = false
+                                showAdminCredentialsDialog = false
+                                Toast.makeText(context, "تم تخويل المشرف بنجاح! أهلاً بك الأستاذ ماهر الوتاري.", Toast.LENGTH_SHORT).show()
+                                onNavigateToAdmin()
+                            } else {
+                                isVerifyingAdmin = false
+                                Toast.makeText(context, "عذراً، رموز المرور الإدارية غير صحيحة. تم رصد الواقعة أمنياً.", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                        enabled = !isVerifyingAdmin
+                    ) {
+                        Text("دخول سرّي للإشراف", color = Color.Black)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAdminCredentialsDialog = false }) {
+                        Text("تراجع", color = Color.Gray)
+                    }
+                },
+                containerColor = cardColor
             )
         }
     }

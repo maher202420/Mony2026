@@ -1,8 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/app_logo"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer financial shield in Electric Blue -->
+    <path
+        android:strokeColor="#00D4FF"
+        android:strokeWidth="3.5"
+        android:fillColor="#111726"
+        android:pathData="M 54,20 A 34,34 0 1,1 53.9,20 Z" />
+
+    <!-- Innermost radiant core -->
+    <path
+        android:strokeColor="#FFD700"
+        android:strokeWidth="1"
+        android:pathData="M 54,25 A 29,29 0 1,0 54.1,25" />
+
+    <!-- WAM Text styled in Gold and Electric Blue -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M36,44 L41,44 L46,59 L51,47 L57,47 L62,59 L67,44 L72,44 L64,66 L57,66 L54,56 L51,66 L44,66 Z" />
+</vector>

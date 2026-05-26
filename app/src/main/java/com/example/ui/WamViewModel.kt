@@ -1,240 +1,372 @@
 package com.example.ui
 
 import android.app.Application
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import com.example.data.*
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-import java.io.File
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.data.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import java.util.UUID
 
 class WamViewModel(application: Application) : AndroidViewModel(application) {
+
     private val db = AppDatabase.getDatabase(application)
-    private val repository = WamRepository(db)
+    val repository = WamRepository(db)
 
-    val mainUser: StateFlow<UserAccount?> = repository.mainUser
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    val allUsers: StateFlow<List<UserAccount>> = repository.allUsers
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val allTransactions: StateFlow<List<Transaction>> = repository.allTransactions
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val allSavingPots: StateFlow<List<SavingPot>> = repository.allSavingPots
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val allAuditLogs: StateFlow<List<AuditLog>> = repository.allAuditLogs
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
+    // Exposed flows from database
+    val allUsers: Flow<List<UserAccount>> = repository.allUsers
+    val allTransactions: Flow<List<Transaction>> = repository.allTransactions
     val adminConfig: StateFlow<AdminConfig?> = repository.adminConfig
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AdminConfig())
+    val auditLogs: Flow<List<AuditLog>> = repository.auditLogs
 
-    // Admin Credentials State
-    var failedLoginAttempts by mutableIntStateOf(0)
-    var lockoutTimeRemainingMinutes by mutableIntStateOf(0)
-    var isAdminLoggedIn by mutableStateOf(false)
-    var adminTriggerMessage by mutableStateOf("")
+    // Logged-in / Active user profile state (stored in Flow)
+    private val _currentUser = MutableStateFlow<UserAccount?>(null)
+    val currentUser: StateFlow<UserAccount?> = _currentUser.asStateFlow()
 
-    // Simulated Lockout variables
-    private var lockoutTimestamp: Long = 0
+    // Chat bot message log: Pair of <MessageText, IsUser>
+    val chatMessages = mutableStateListOf<Pair<String, Boolean>>()
+    var isChatLoading = MutableStateFlow(false)
 
-    // Chatbot State
-    val chatMessages = mutableStateListOf<Pair<String, Boolean>>() // Pair(MessageContent, isUser)
-    var isChatLoading by mutableStateOf(false)
+    // Savings state (simulated Saving Pots)
+    private val _savingPotBalanceYer = MutableStateFlow(0.0)
+    val savingPotBalanceYer = _savingPotBalanceYer.asStateFlow()
 
     init {
         viewModelScope.launch {
             repository.verifyAndSeedDatabase()
-            // Add initial welcome chat message if empty
+            // Set first user in DB as default active user so they are never in a null screen initially,
+            // but require onboarding onboarding complete to set customized profile details!
+            val mainUser = db.userDao().getMainUser()
+            _currentUser.value = mainUser
+
             if (chatMessages.isEmpty()) {
                 chatMessages.add(Pair("مرحباً بك في المحفظة الذكية WAM من الأستاذ ماهر أحمد الوتاري! كيف يمكنني مساعدتك مالياً اليوم؟", false))
             }
         }
     }
 
-    // Check Lockout on Tick/Action
-    fun checkLockout() {
-        if (lockoutTimeRemainingMinutes > 0) {
-            val elapsedMs = System.currentTimeMillis() - lockoutTimestamp
-            val remainingMs = (30 * 60 * 1000) - elapsedMs
-            if (remainingMs <= 0) {
-                lockoutTimeRemainingMinutes = 0
-                failedLoginAttempts = 0
-            } else {
-                lockoutTimeRemainingMinutes = (remainingMs / 60000).toInt() + 1
-            }
+    /**
+     * Requirement 2: Register a new user with real validations (phone uniqueness and 8-char password length).
+     */
+    suspend fun registerNewUser(fullName: String, phone: String, password: String): String? {
+        if (password.length < 8) {
+            return "عذراً، يجب أن تتكون كلمة المرور من 8 خانات على الأقل لضمان الأمان الآمن."
         }
+        val existing = db.userDao().getUserByPhone(phone)
+        if (existing != null) {
+            return "عذراً، رقم الهاتف هذا مسجل بالفعل لحساب آخر. يرجى إدخال رقم مختلف."
+        }
+        
+        val newUser = UserAccount(
+            fullName = fullName,
+            phoneNumber = phone,
+            password = password,
+            balanceYer = 285400.0,
+            balanceUsd = 450.0,
+            isFrozen = false
+        )
+        db.userDao().insertUser(newUser)
+        repository.addAuditLog("SYSTEM", true, "تم تسجيل مستخدم جديد بنجاح: $fullName ($phone)")
+        return null // Success
     }
 
-    // Attempt Secret Login
-    fun attemptAdminLogin(user: String, pass: String): Boolean {
-        checkLockout()
-        if (lockoutTimeRemainingMinutes > 0) {
-            viewModelScope.launch {
-                repository.addAuditLog("SECURITY", false, "محاولة تسجيل دخول مرفوضة: النظام مقفل احترازياً.")
-            }
-            return false
+    /**
+     * Requirement 2: Verify login strictly against the Room database.
+     */
+    suspend fun loginUser(phone: String, password: String): String? {
+        val user = db.userDao().getUserByPhone(phone)
+        if (user == null) {
+            repository.addAuditLog(phone, false, "فشل محاولة تسجيل الدخول (الحساب غير موجود)")
+            return "عذراً، لم يتم العثور على حساب مسجل بهذا الرقم. يرجى التأكد من الرقم أو إنشاء حساب جديد."
+        }
+        if (user.password != password) {
+            repository.addAuditLog(phone, false, "فشل محاولة تسجيل الدخول (كلمة مرور غير صحيحة)")
+            return "تنبيه: كلمة المرور المدخلة غير صحيحة. يرجى المحاولة مجدداً."
+        }
+        if (user.isFrozen) {
+            repository.addAuditLog(phone, false, "محاولة تسجيل دخول لحساب مجمد")
+            return "تنبيه أمني: الحساب مجمد حالياً بموجب سياسة أمان المالي. يرجى مراجعة الإدارة."
         }
 
-        if (user == "WAM2026" && pass == "maher--736462") {
-            isAdminLoggedIn = true
-            failedLoginAttempts = 0
-            viewModelScope.launch {
-                repository.addAuditLog("WAM2026", true, "تم تسجيل دخول ناجح إلى واجهة الإدمن الخفية.")
-            }
-            return true
-        } else {
-            failedLoginAttempts++
-            if (failedLoginAttempts >= 3) {
-                lockoutTimeRemainingMinutes = 30
-                lockoutTimestamp = System.currentTimeMillis()
-                viewModelScope.launch {
-                    repository.addAuditLog("WAM2026", false, "تجاوز الحد الأقصى للمحاولات (3). تم قفل لوحة التحكم الخفية 30 دقيقة.")
-                }
-            } else {
-                viewModelScope.launch {
-                    repository.addAuditLog("WAM2026", false, "فشل تسجيل الدخول. المحاولة رقم $failedLoginAttempts")
-                }
-            }
-            return false
-        }
-    }
-
-    fun logoutAdmin() {
-        isAdminLoggedIn = false
-    }
-
-    // Dial USSD Code action
-    fun dialUSSDCode(code: String): String {
-        return if (code == "*777644670#") {
-            // Secret SMS link generated
-            viewModelScope.launch {
-                repository.addAuditLog("USSD", true, "تم طلب كود الطوارئ لفك القفل وإرسال رابط SMS احتياطي.")
-            }
-            "تم إرسال رابط تسجيل الدخول الاحتياطي للوحة التحكم برسالة قصيرة آمنة إلى الرقم المعتمد +967777644670 بنجاح."
-        } else {
-            "رمز MMI غير صالح أو مشكلة في اتصال شبكة USSD المباشرة."
-        }
-    }
-
-    // AI Chatbot Service Call
-    fun sendChatMessage(message: String) {
-        if (message.isBlank() || isChatLoading) return
-        chatMessages.add(Pair(message, true))
-        isChatLoading = true
-
-        viewModelScope.launch {
-            // Prepare chat history to keep token context concise (last 4 turns)
-            val history = chatMessages.takeLast(8).dropLast(1).map {
-                val who = if (it.second) "USER" else "MODEL"
-                Pair(who, it.first)
-            }
-            val response = GeminiClient.getChatbotResponse(message, history)
-            chatMessages.add(Pair(response, false))
-            isChatLoading = false
-        }
-    }
-
-    fun clearChat() {
-        chatMessages.clear()
-        chatMessages.add(Pair("مرحباً بك مجدداً! كيف يمكنني مساعدتك الآن؟", false))
-    }
-
-    // --- FINANCIAL OPERATIONS ---
-    fun transferMoney(phone: String, amount: Double, currency: String, note: String, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.executeP2PTransfer(phone, amount, currency, note)
-            onResult(res)
-        }
-    }
-
-    fun payBill(service: String, amount: Double, currency: String, providerId: String, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.executeBillPayment(service, amount, currency, providerId)
-            onResult(res)
-        }
-    }
-
-    fun rechargeMobile(phone: String, operator: String, amount: Double, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.executeRecharge(phone, operator, amount)
-            onResult(res)
-        }
-    }
-
-    fun microLoan(amount: Double, currency: String, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.applyMicroLoan(amount, currency)
-            onResult(res)
-        }
-    }
-
-    fun depositOrWithdraw(isDeposit: Boolean, agentPhone: String, amount: Double, currency: String, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.cashDepositOrWithdraw(isDeposit, agentPhone, amount, currency)
-            onResult(res)
-        }
-    }
-
-    // Saving Pot actions
-    fun addSavingPot(title: String, target: Double, currency: String) {
-        viewModelScope.launch {
-            repository.createSavingPot(title, target, currency)
-        }
-    }
-
-    fun saveToPot(potId: Int, amount: Double, onResult: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val res = repository.saveToPot(potId, amount)
-            onResult(res)
-        }
-    }
-
-    fun deleteSavingPot(id: Int) {
-        viewModelScope.launch {
-            repository.deleteSavingPot(id)
-        }
-    }
-
-    // --- ADMIN CONTROL ACTIONS ---
-    fun setAccountStatus(userId: Int, isFreeze: Boolean) {
-        viewModelScope.launch {
-            repository.toggleUserAccountStatus(userId, isFreeze)
-            repository.addAuditLog("WAM2026", true, "تغيير حالة حساب المستخدم رقم $userId إلى ${if (isFreeze) "قيد التجميد" else "نشط"}")
-        }
-    }
-
-    fun saveAdminThemeSettings(appName: String, primaryColor: String, secondaryColor: String, fee: Double, isCrypto: Boolean, systemFrozen: Boolean) {
-        viewModelScope.launch {
-            repository.updateConfigData(appName, primaryColor, secondaryColor, fee, isCrypto, systemFrozen)
-            repository.addAuditLog("WAM2026", true, "تحديث إعدادات المحفظة والسمات المرئية والعمولات بنجاح.")
-        }
-    }
-
-    fun clearSystemAuditLogs() {
-        viewModelScope.launch {
-            repository.clearAuditLogs()
-            repository.addAuditLog("WAM2026", true, "تم تصفير سجل التدقيق بالكامل.")
-        }
+        _currentUser.value = user
+        repository.addAuditLog(user.fullName, true, "تم تسجيل الدخول بنجاح للمحفظة")
+        return null // Success
     }
 
     fun updateMainUserProfile(fullName: String, phoneNumber: String) {
         viewModelScope.launch {
-            val main = db.userDao().getMainUser()
-            if (main != null) {
-                val updated = main.copy(fullName = fullName, phoneNumber = phoneNumber)
+            val current = _currentUser.value
+            if (current != null) {
+                val updated = current.copy(fullName = fullName, phoneNumber = phoneNumber)
                 db.userDao().updateUser(updated)
-                repository.addAuditLog("SYSTEM", true, "تم تحديث اسم الحساب الترحيبي إلى $fullName ورقم الهاتف إلى $phoneNumber")
+                _currentUser.value = updated
+                repository.addAuditLog("SYSTEM", true, "تم تحديث اسم الحساب الترحيبي إلى $fullName ورقم الهاتف لـ $phoneNumber")
+            }
+        }
+    }
+
+    fun performTransfer(recipientPhone: String, amount: Double, currency: String, desc: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val sender = _currentUser.value
+            if (sender == null) {
+                onResult(false, "لم يتم العثور على جلسة تسجيل دخول صالحة.")
+                return@launch
+            }
+
+            if (sender.phoneNumber == recipientPhone) {
+                onResult(false, "عذراً، لا يمكنك التحويل إلى رقم التحويل الخاص بك.")
+                return@launch
+            }
+
+            // Verify if recipient exists in DB
+            val recipient = db.userDao().getUserByPhone(recipientPhone)
+            if (recipient == null) {
+                onResult(false, "فشل عملية التحويل: رقم المستلم غير مسجل لخدمات WAM.")
+                repository.addAuditLog(sender.fullName, false, "فشل تحويل لعدم وجود المستلم $recipientPhone")
+                return@launch
+            }
+
+            // Verify balance
+            if (currency == "YER") {
+                if (sender.balanceYer < amount) {
+                    onResult(false, "عذراً، رصيدك من الريال اليمني غير كافٍ لإتمام التحويل.")
+                    return@launch
+                }
+                val updatedSender = sender.copy(balanceYer = sender.balanceYer - amount)
+                val updatedRecipient = recipient.copy(balanceYer = recipient.balanceYer + amount)
+                db.userDao().updateUser(updatedSender)
+                db.userDao().updateUser(updatedRecipient)
+                _currentUser.value = updatedSender
+            } else {
+                if (sender.balanceUsd < amount) {
+                    onResult(false, "عذراً، رصيدك من الدولار غير كافٍ لإتمام التحويل.")
+                    return@launch
+                }
+                val updatedSender = sender.copy(balanceUsd = sender.balanceUsd - amount)
+                val updatedRecipient = recipient.copy(balanceUsd = recipient.balanceUsd + amount)
+                db.userDao().updateUser(updatedSender)
+                db.userDao().updateUser(updatedRecipient)
+                _currentUser.value = updatedSender
+            }
+
+            // Write transactions
+            val ref = "TX-${UUID.randomUUID().toString().take(8).uppercase()}"
+            db.transactionDao().insertTransaction(
+                Transaction(
+                    type = "TRANSFER",
+                    amount = amount,
+                    currency = currency,
+                    title = "تحويل إلى: ${recipient.fullName}",
+                    reference = ref
+                )
+            )
+
+            repository.addAuditLog(sender.fullName, true, "تم تحويل بنجاح $amount $currency إلى ${recipient.fullName}")
+            onResult(true, "تم التحويل الفوري بنجاح! رقم المرجعية: $ref")
+        }
+    }
+
+    fun performDeposit(amount: Double, currency: String, agencyName: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val user = _currentUser.value ?: return@launch
+            val updated = if (currency == "YER") {
+                user.copy(balanceYer = user.balanceYer + amount)
+            } else {
+                user.copy(balanceUsd = user.balanceUsd + amount)
+            }
+
+            db.userDao().updateUser(updated)
+            _currentUser.value = updated
+
+            val ref = "TX-${UUID.randomUUID().toString().take(8).uppercase()}"
+            db.transactionDao().insertTransaction(
+                Transaction(
+                    type = "DEPOSIT",
+                    amount = amount,
+                    currency = currency,
+                    title = "إيداع نقدي عبر وكيل: $agencyName",
+                    reference = ref
+                )
+            )
+
+            repository.addAuditLog(user.fullName, true, "إيداع مبلغ $amount $currency عبر $agencyName")
+            onResult(true, "تم إيداع الرصيد بنجاح لتطبيقك عبر $agencyName!")
+        }
+    }
+
+    fun performWithdrawal(amount: Double, currency: String, agencyName: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val user = _currentUser.value ?: return@launch
+            if (currency == "YER" && user.balanceYer < amount) {
+                onResult(false, "عذراً، الرصيد بعملة ريال يمني غير كافٍ للسحب.")
+                return@launch
+            }
+            if (currency == "USD" && user.balanceUsd < amount) {
+                onResult(false, "عذراً، الرصيد بعملة دولار غير كافٍ للسحب.")
+                return@launch
+            }
+
+            val updated = if (currency == "YER") {
+                user.copy(balanceYer = user.balanceYer - amount)
+            } else {
+                user.copy(balanceUsd = user.balanceUsd - amount)
+            }
+
+            db.userDao().updateUser(updated)
+            _currentUser.value = updated
+
+            val ref = "TX-${UUID.randomUUID().toString().take(8).uppercase()}"
+            db.transactionDao().insertTransaction(
+                Transaction(
+                    type = "WITHDRAWAL",
+                    amount = amount,
+                    currency = currency,
+                    title = "سحب نقدي من وكيل: $agencyName",
+                    reference = ref
+                )
+            )
+
+            repository.addAuditLog(user.fullName, true, "سحب رصيد بقيمة $amount $currency عبر $agencyName")
+            onResult(true, "تم السحب النقدي بنجاح عبر الوكيل والموافقة الفورية!")
+        }
+    }
+
+    fun performBillPayment(service: String, billingNumber: String, amount: Double, currency: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val user = _currentUser.value ?: return@launch
+            if (currency == "YER" && user.balanceYer < amount) {
+                onResult(false, "الرصيد بعملة ريال يمني غير كافٍ لسداد الفاتورة.")
+                return@launch
+            }
+            if (currency == "USD" && user.balanceUsd < amount) {
+                onResult(false, "الرصيد بعملة دولار غير كافٍ لسداد الفاتورة.")
+                return@launch
+            }
+
+            // Complete deduction with cashback logic (+1% returned)
+            val cashback = amount * 0.01
+            val updated = if (currency == "YER") {
+                user.copy(balanceYer = user.balanceYer - amount + cashback)
+            } else {
+                user.copy(balanceUsd = user.balanceUsd - amount + cashback)
+            }
+
+            db.userDao().updateUser(updated)
+            _currentUser.value = updated
+
+            val ref = "TX-${UUID.randomUUID().toString().take(8).uppercase()}"
+            db.transactionDao().insertTransaction(
+                Transaction(
+                    type = "PAYMENT",
+                    amount = amount,
+                    currency = currency,
+                    title = "سداد فاتورة $service برقم $billingNumber (كاش باك 1%)",
+                    reference = ref
+                )
+            )
+
+            repository.addAuditLog(user.fullName, true, "سداد فاتورة $service بقيمة $amount مع كاش باك")
+            onResult(true, "تم دفع الفاتورة فوراً بنجاح! تم قيد كاش باك 1% بقيمة $cashback $currency في رصيدك.")
+        }
+    }
+
+    fun performMicroLoan(amount: Double, months: Int, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val user = _currentUser.value ?: return@launch
+            val updated = user.copy(balanceYer = user.balanceYer + amount)
+            db.userDao().updateUser(updated)
+            _currentUser.value = updated
+
+            val ref = "TX-${UUID.randomUUID().toString().take(8).uppercase()}"
+            db.transactionDao().insertTransaction(
+                Transaction(
+                    type = "DEPOSIT",
+                    amount = amount,
+                    currency = "YER",
+                    title = "قرض سريع تمت الموافقة عليه (الذكاء الاصطناعي)",
+                    reference = ref
+                )
+            )
+
+            repository.addAuditLog(user.fullName, true, "تمت الموافقة الآلية على قرض بقيمة $amount ر.ي لسداد مرن")
+            onResult(true, "تمت الموافقة الفورية عبر الذكاء الاصطناعي وإيداع $amount ر.ي بدون فوائد!")
+        }
+    }
+
+    fun submitSavingPotDeposit(amount: Double, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val user = _currentUser.value ?: return@launch
+            if (user.balanceYer < amount) {
+                onResult(false, "الرصيد غير كافٍ لعملية الادخار.")
+                return@launch
+            }
+
+            val updated = user.copy(balanceYer = user.balanceYer - amount)
+            db.userDao().updateUser(updated)
+            _currentUser.value = updated
+            _savingPotBalanceYer.value += amount
+
+            val ref = "TX-${UUID.randomUUID().toString().take(8).uppercase()}"
+            db.transactionDao().insertTransaction(
+                Transaction(
+                    type = "TRANSFER",
+                    amount = amount,
+                    currency = "YER",
+                    title = "شحن وعاء ادخار ذكي",
+                    reference = ref
+                )
+            )
+
+            repository.addAuditLog(user.fullName, true, "شحن وعاء ادخاري بمبلغ $amount ر.ي")
+            onResult(true, "تم الادخار بنجاح! رصيد وعاءك حالياً: ${_savingPotBalanceYer.value} ر.ي بفائدة 0%")
+        }
+    }
+
+    fun logout() {
+        _currentUser.value = null
+    }
+
+    fun askGemini(prompt: String, apiKey: String) {
+        viewModelScope.launch {
+            if (prompt.isBlank()) return@launch
+            chatMessages.add(Pair(prompt, true))
+            isChatLoading.value = true
+
+            val aiAnswer = GeminiService.getChatResponse(prompt, apiKey)
+            chatMessages.add(Pair(aiAnswer, false))
+            isChatLoading.value = false
+        }
+    }
+
+    fun updateAdminConfig(updated: AdminConfig) {
+        viewModelScope.launch {
+            db.adminConfigDao().updateConfig(updated)
+            repository.addAuditLog("ADMIN", true, "تم تحديث إعدادات النظام وتعديل التفضيلات")
+        }
+    }
+
+    fun clearAuditLogs() {
+        viewModelScope.launch {
+            db.auditLogDao().clearLogs()
+            repository.addAuditLog("WAM2026", true, "تم تصفير سجل التدقيق بالكامل الآمن.")
+        }
+    }
+
+    fun freezeUserAccount(userId: Int, isFrozen: Boolean) {
+        viewModelScope.launch {
+            val user = db.userDao().getUserById(userId)
+            if (user != null) {
+                val updated = user.copy(isFrozen = isFrozen)
+                db.userDao().updateUser(updated)
+                // If the frozen user was the currentUser, update it
+                if (_currentUser.value?.id == userId) {
+                    _currentUser.value = updated
+                }
+                repository.addAuditLog("ADMIN", true, "تحديث حالة الحساب للمستخدم ${user.fullName} إلى: " + if(isFrozen) "مجمد" else "نشط")
             }
         }
     }

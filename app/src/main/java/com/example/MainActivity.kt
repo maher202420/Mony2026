@@ -5,124 +5,175 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.WamViewModel
 import com.example.ui.WamViewModelFactory
 import com.example.ui.screens.*
-import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.AlMaherTheme
 
 enum class Screen {
-    HOME,
-    SAVINGS,
-    FINANCE,
-    CHATBOT,
-    ABOUT
+    HOME, SAVINGS, FINANCE, CHATBOT, ABOUT, ADMIN
 }
 
 class MainActivity : ComponentActivity() {
-
-    private val viewModel: WamViewModel by viewModels {
-        WamViewModelFactory(application)
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         setContent {
-            MyApplicationTheme {
-                val adminConfig by viewModel.adminConfig.collectAsState()
+            val viewModel: WamViewModel by viewModels {
+                WamViewModelFactory(application)
+            }
 
-                // Decode dynamic theme colors directly from Local State Config (Room-backed!)
-                val primaryHex = adminConfig?.primaryColorHex ?: "#FFD700"
-                val secondaryHex = adminConfig?.secondaryColorHex ?: "#00D4FF"
-                val primaryColor = remember(primaryHex) { parseHexToColor(primaryHex, Color(0xFFFFD700)) }
-                val secondaryColor = remember(secondaryHex) { parseHexToColor(secondaryHex, Color(0xFF00D4FF)) }
+            val currentUser by viewModel.currentUser.collectAsState()
+            var currentScreen by remember { mutableStateOf(Screen.HOME) }
+            var showAdminDashboardOverlay by remember { mutableStateOf(false) }
+            
+            // Onboarding guard: user must be logged in to access the system
+            var isOnboarded by remember { mutableStateOf(false) }
 
-                var currentScreen by remember { mutableStateOf(Screen.HOME) }
-                var showAdminDashboardOverlay by remember { mutableStateOf(false) }
-                var isOnboarded by remember { mutableStateOf(false) }
+            val primaryColor = Color(0xFFFFD700) // Gold
+            val secondaryColor = Color(0xFF00D4FF) // Electric Blue
 
+            AlMaherTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFF0A0E17)
+                    color = MaterialTheme.colorScheme.background
                 ) {
-                    if (!isOnboarded) {
+                    if (!isOnboarded || currentUser == null) {
                         OnboardingScreen(
-                            primaryColor = primaryColor,
-                            secondaryColor = secondaryColor,
-                            onOnboardingComplete = { fullName, phone ->
-                                viewModel.updateMainUserProfile(fullName, phone)
+                            viewModel = viewModel,
+                            onOnboardingComplete = {
                                 isOnboarded = true
+                            },
+                            onNavigateToAdmin = {
+                                showAdminDashboardOverlay = true
                             }
                         )
                     } else if (showAdminDashboardOverlay) {
                         AdminScreen(
                             viewModel = viewModel,
-                            onNavigateBack = { showAdminDashboardOverlay = false },
-                            primaryColor = primaryColor,
-                            secondaryColor = secondaryColor
+                            onNavigateBack = { showAdminDashboardOverlay = false }
                         )
                     } else {
                         Scaffold(
-                            modifier = Modifier.fillMaxSize(),
                             bottomBar = {
-                                CustomM3NavigationBar(
-                                    currentScreen = currentScreen,
-                                    onScreenSelected = { currentScreen = it },
-                                    primaryColor = primaryColor,
-                                    cryptoEnabled = adminConfig?.isCryptoEnabled == true
-                                )
-                            },
-                            contentWindowInsets = WindowInsets.safeDrawing
+                                NavigationBar(
+                                    containerColor = Color(0xFF0A0E17),
+                                    contentColor = Color.White
+                                ) {
+                                    NavigationBarItem(
+                                        selected = currentScreen == Screen.HOME,
+                                        onClick = { currentScreen = Screen.HOME },
+                                        icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
+                                        label = { Text("الرئيسية", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Color.Black,
+                                            selectedTextColor = primaryColor,
+                                            indicatorColor = primaryColor,
+                                            unselectedIconColor = Color.Gray,
+                                            unselectedTextColor = Color.Gray
+                                        )
+                                    )
+
+                                    NavigationBarItem(
+                                        selected = currentScreen == Screen.SAVINGS,
+                                        onClick = { currentScreen = Screen.SAVINGS },
+                                        icon = { Icon(Icons.Default.AccountBalanceWallet, contentDescription = "Savings") },
+                                        label = { Text("ادخار ذكي", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Color.Black,
+                                            selectedTextColor = primaryColor,
+                                            indicatorColor = primaryColor,
+                                            unselectedIconColor = Color.Gray,
+                                            unselectedTextColor = Color.Gray
+                                        )
+                                    )
+
+                                    NavigationBarItem(
+                                        selected = currentScreen == Screen.FINANCE,
+                                        onClick = { currentScreen = Screen.FINANCE },
+                                        icon = { Icon(Icons.Default.AccountBalance, contentDescription = "Finance") },
+                                        label = { Text("تمويل ميسر", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Color.Black,
+                                            selectedTextColor = primaryColor,
+                                            indicatorColor = primaryColor,
+                                            unselectedIconColor = Color.Gray,
+                                            unselectedTextColor = Color.Gray
+                                        )
+                                    )
+
+                                    NavigationBarItem(
+                                        selected = currentScreen == Screen.CHATBOT,
+                                        onClick = { currentScreen = Screen.CHATBOT },
+                                        icon = { Icon(Icons.Default.Face, contentDescription = "المساعد الذكي") },
+                                        label = { Text("المستشار الذكي WAM AI", fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Color.Black,
+                                            selectedTextColor = primaryColor,
+                                            indicatorColor = primaryColor,
+                                            unselectedIconColor = Color.Gray,
+                                            unselectedTextColor = Color.Gray
+                                        )
+                                    )
+
+                                    NavigationBarItem(
+                                        selected = currentScreen == Screen.ABOUT,
+                                        onClick = { currentScreen = Screen.ABOUT },
+                                        icon = { Icon(Icons.Default.Info, contentDescription = "About WAM") },
+                                        label = { Text("عن الـ WAM", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = Color.Black,
+                                            selectedTextColor = primaryColor,
+                                            indicatorColor = primaryColor,
+                                            unselectedIconColor = Color.Gray,
+                                            unselectedTextColor = Color.Gray
+                                        )
+                                    )
+                                }
+                            }
                         ) { innerPadding ->
-                            // Screen Views with crisp fade transitions
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(innerPadding)
-                            ) {
-                                when (currentScreen) {
-                                    Screen.HOME -> HomeScreen(
-                                        viewModel = viewModel,
-                                        primaryColor = primaryColor,
-                                        secondaryColor = secondaryColor
-                                    )
-                                    Screen.SAVINGS -> SavingsScreen(
-                                        viewModel = viewModel,
-                                        primaryColor = primaryColor,
-                                        secondaryColor = secondaryColor
-                                    )
-                                    Screen.FINANCE -> FinanceScreen(
-                                        viewModel = viewModel,
-                                        primaryColor = primaryColor,
-                                        secondaryColor = secondaryColor
-                                    )
-                                    Screen.CHATBOT -> ChatbotScreen(
-                                        viewModel = viewModel,
-                                        primaryColor = primaryColor,
-                                        secondaryColor = secondaryColor
-                                    )
-                                    Screen.ABOUT -> AboutScreen(
-                                        viewModel = viewModel,
-                                        primaryColor = primaryColor,
-                                        secondaryColor = secondaryColor,
-                                        onNavigateToAdmin = { showAdminDashboardOverlay = true }
-                                    )
+                            val user = currentUser
+                            if (user != null) {
+                                Box(modifier = Modifier.padding(innerPadding)) {
+                                    when (currentScreen) {
+                                        Screen.HOME -> HomeScreen(
+                                            viewModel = viewModel,
+                                            currentUser = user,
+                                            onNavigateToSavings = { currentScreen = Screen.SAVINGS }
+                                        )
+                                        Screen.SAVINGS -> SavingsScreen(
+                                            viewModel = viewModel,
+                                            currentUser = user
+                                        )
+                                        Screen.FINANCE -> FinanceScreen(
+                                            viewModel = viewModel,
+                                            currentUser = user
+                                        )
+                                        Screen.CHATBOT -> ChatbotScreen(
+                                            viewModel = viewModel
+                                        )
+                                        Screen.ABOUT -> AboutScreen(
+                                            viewModel = viewModel,
+                                            onNavigateBack = { currentScreen = Screen.HOME },
+                                            onTriggerAdminGate = {
+                                                showAdminDashboardOverlay = true
+                                            }
+                                        )
+                                        else -> currentScreen = Screen.HOME
+                                    }
                                 }
                             }
                         }
@@ -130,99 +181,5 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-}
-
-@Composable
-fun CustomM3NavigationBar(
-    currentScreen: Screen,
-    onScreenSelected: (Screen) -> Unit,
-    primaryColor: Color,
-    cryptoEnabled: Boolean
-) {
-    NavigationBar(
-        containerColor = Color(0xFF131722),
-        tonalElevation = 8.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-    ) {
-        NavigationBarItem(
-            selected = currentScreen == Screen.HOME,
-            onClick = { onScreenSelected(Screen.HOME) },
-            icon = { Icon(Icons.Default.Home, contentDescription = "الرئيسية") },
-            label = { Text("الرئيسية", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.Black,
-                selectedTextColor = primaryColor,
-                unselectedIconColor = Color.LightGray,
-                unselectedTextColor = Color.Gray,
-                indicatorColor = primaryColor
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == Screen.SAVINGS,
-            onClick = { onScreenSelected(Screen.SAVINGS) },
-            icon = { Icon(Icons.Default.Savings, contentDescription = "الأوعية") },
-            label = { Text("الأوعية", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.Black,
-                selectedTextColor = primaryColor,
-                unselectedIconColor = Color.LightGray,
-                unselectedTextColor = Color.Gray,
-                indicatorColor = primaryColor
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == Screen.FINANCE,
-            onClick = { onScreenSelected(Screen.FINANCE) },
-            icon = { Icon(Icons.Default.CurrencyExchange, contentDescription = "المالية") },
-            label = { Text("الاستثمار", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.Black,
-                selectedTextColor = primaryColor,
-                unselectedIconColor = Color.LightGray,
-                unselectedTextColor = Color.Gray,
-                indicatorColor = primaryColor
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == Screen.CHATBOT,
-            onClick = { onScreenSelected(Screen.CHATBOT) },
-            icon = { Icon(Icons.Default.SmartToy, contentDescription = "المساعد الذكي") },
-            label = { Text("المستشار الذكي WAM AI", fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.Black,
-                selectedTextColor = primaryColor,
-                unselectedIconColor = Color.LightGray,
-                unselectedTextColor = Color.Gray,
-                indicatorColor = primaryColor
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == Screen.ABOUT,
-            onClick = { onScreenSelected(Screen.ABOUT) },
-            icon = { Icon(Icons.Default.Info, contentDescription = "عن WAM") },
-            label = { Text("عن التطبيق", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = Color.Black,
-                selectedTextColor = primaryColor,
-                unselectedIconColor = Color.LightGray,
-                unselectedTextColor = Color.Gray,
-                indicatorColor = primaryColor
-            )
-        )
-    }
-}
-
-fun parseHexToColor(hex: String, fallback: Color): Color {
-    return try {
-        Color(android.graphics.Color.parseColor(hex))
-    } catch (e: Exception) {
-        fallback
     }
 }
